@@ -1,0 +1,64 @@
+@prefix :      <http://books.com/> .
+@prefix schema: <http://schema.org/> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+# Ontology header
+<http://books.com/> a owl:Ontology ;
+  rdfs:label "Goodreads Books vocab (minimal)"@en ;
+  rdfs:comment "Minimal RDFS/OWL vocabulary for the Goodreads-to-RDF mini-project."@en .
+
+# Class (dataset-specific)
+:BBERating a owl:Class ;
+  rdfs:label "BBE Rating"@en ;
+  rdfs:comment "BBE score/votes information from the dataset."@en .
+
+# Properties (dataset-specific)
+
+# bookId: in your data it's a string identifier like "32822135_archer_s_voice"
+:bookId a owl:DatatypeProperty ;
+  rdfs:label "bookId"@en ;
+  rdfs:comment "Identifier of the book in the source dataset."@en ;
+  rdfs:domain schema:Book ;
+  rdfs:range xsd:string ;
+  rdfs:subPropertyOf schema:identifier .
+
+# seriesPosition is kept as string because you may have "1-7" etc.
+:seriesPosition a owl:DatatypeProperty ;
+  rdfs:label "series position"@en ;
+  rdfs:comment "Position of a book inside its series (e.g., 1, 5, 1-7)."@en ;
+  rdfs:domain schema:Book ;
+  rdfs:range xsd:string .
+
+# AggregateRating enrichments (your data uses xsd:double / xsd:int)
+:likedPercent a owl:DatatypeProperty ;
+  rdfs:label "liked percent"@en ;
+  rdfs:domain schema:AggregateRating ;
+  rdfs:range xsd:double .
+
+:star5Count a owl:DatatypeProperty ; rdfs:domain schema:AggregateRating ; rdfs:range xsd:int .
+:star4Count a owl:DatatypeProperty ; rdfs:domain schema:AggregateRating ; rdfs:range xsd:int .
+:star3Count a owl:DatatypeProperty ; rdfs:domain schema:AggregateRating ; rdfs:range xsd:int .
+:star2Count a owl:DatatypeProperty ; rdfs:domain schema:AggregateRating ; rdfs:range xsd:int .
+:star1Count a owl:DatatypeProperty ; rdfs:domain schema:AggregateRating ; rdfs:range xsd:int .
+
+# BBE block
+:bbeRating a owl:ObjectProperty ;
+  rdfs:label "bbe rating block"@en ;
+  rdfs:domain schema:Book ;
+  rdfs:range :BBERating .
+
+:bbeScore a owl:DatatypeProperty ;
+  rdfs:domain :BBERating ;
+  rdfs:range xsd:double .
+
+:bbeVotes a owl:DatatypeProperty ;
+  rdfs:domain :BBERating ;
+  rdfs:range xsd:int .
+
+# Price (your data uses xsd:double)
+:price a owl:DatatypeProperty ;
+  rdfs:domain schema:Book ;
+  rdfs:range xsd:double .
