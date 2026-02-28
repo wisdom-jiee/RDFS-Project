@@ -11,9 +11,7 @@ The goal of the project is to build a small RDF-based web application on top of 
 
 The dataset is a subset of **“GoodReads Best Books”** from Kaggle. Each book is modeled as a `schema:Book`, linked to authors, series, genres, languages, etc. The RDF reuses terms from `schema.org` and introduces a few local properties and classes.   
 
----
-
-##  Project Structure
+## Project Structure
 
 ```bash
 books-semantic-project/
@@ -32,14 +30,10 @@ books-semantic-project/
 └── README.md                            # Documentation
 ```
 
----
-
 ## Prerequisites
 
 - **Apache Jena Fuseki** (tested with a local instance on `http://localhost:3030`)
 - Internet access for the Wikidata queries (`https://query.wikidata.org/sparql`)
-
----
 
 ## 1. Load the RDF data into Fuseki
 
@@ -109,8 +103,6 @@ books-semantic-project/
    - In the dedicated section, you can enter a book title and click the button to find the author’s nationality.
    - The script first finds the author in the local `books` dataset, then queries Wikidata , endpoint `https://query.wikidata.org/sparql` for the country of citizenship of that author, restricted to entities that are humans and writers , `wdt:P31 wd:Q5`, `wdt:P106 wd:Q36180`.
    - Because of name collisions and formatting issues, some titles may return multiple authors or no result.
-
-------
 
 ## 3. Notes and limitations
 
