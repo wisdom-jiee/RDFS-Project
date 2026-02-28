@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Books RDF – Mini Web App</title>
+  <script src="https://d3js.org/d3.v3.min.js"></script>
+  <script src="d3sparql.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    h1 {
+      font-size: 22px;
+    }
+    .section {
+      margin-bottom: 20px;
+      padding: 10px;
+      border: 1px solid #ccc;
+    }
+    label {
+      display: inline-block;
+      margin-right: 10px;
+      margin-bottom: 5px;
+    }
+    input[type="text"] {
+      padding: 4px;
+      min-width: 260px;
+    }
+    button {
+      padding: 4px 10px;
+      margin: 2px 4px;
+      cursor: pointer;
+    }
+    textarea {
+      width: 100%;
+      height: 120px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    #results {
+      margin-top: 10px;
+      overflow-x: auto;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      max-width: 100%;
+      font-size: 13px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 4px 6px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    #status {
+      margin-top: 5px;
+      font-size: 12px;
+      color: #555;
+    }
+    .small {
+      font-size: 12px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Mini-projet – Books RDF Web App</h1>
+
+<div class="section">
+
+  <label>
+    SPARQL endpoint:
+    <input type="text" id="endpoint"
+           value="http://localhost:3030/books/sparql">
+    https://query.wikidata.org/sparql or http://localhost:3030/books/sparql
+  </label>
+</div>
+
+<div class="section">
+  <h2>Query</h2>
+
+  <div>
+    <button onclick="runTopRated()">Top 50 highest-rated books</button>
+  </div>
+
+  <div>
+    <label>Search books by author</label>
+    <input type="text" id="authorInput"
+        placeholder="Robert Graves">
+    <button onclick="runByAuthor()">Search</button>
+  </div>
+
+  <div>
+    <button onclick="runSeries()">Books with series + seriesPosition</button>
+  </div>
+
+  <div>
+    <button onclick="runGenreCount()">Number of books by genre</button>
+  </div>
+
+  <div>
+    <button onclick="runRatingVsBBE()">Comparing Goodreads rating and BBE score</button>
+  </div>
+  
+  <div>
+  <label>Find the author's nationality based on the book title (Wikidata):</label>
+  <input type="text" id="bookTitleNationality"
+         placeholder="Catching Fire">
+  <button onclick="runAuthorNationality()">Search</button>
+</div>
+</div>
+
+<div class="section">
+  <h2>SPARQL </h2>
+  <p class="small">
+  </p>
+  <textarea id="queryText"></textarea><br>
+  <button onclick="runCurrentQuery()">Go</button>
+  <span id="status"></span>
+</div>
+
+<div class="section">
+  <h2>Results</h2>
+  <div id="results">No Result</div>
+</div>
+
+<div id="chart"></div>
+<button onclick="runGenreCountChart()">results of genre count</button>
+
+<script>
+  // Get Fuseki SPARQL endpoint:
+  function getEndpoint() {
+    return document.getElementById("endpoint").value.trim();
+  }
+
+  // Helper function to send SPARQL query and get JSON results
+  async function fetchSparqlJSON(endpoint, query) {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/sparql-query",
+      "Accept": "application/sparql-results+json"
+    },
+    body: query
+  });
+  // Check for HTTP errors
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error("HTTP " + response.status + " – " + text);
+  }
+  return await response.json();
+ }
+
+  // do SPARQL query and render results 
+  async function runQuery(query) {
+    document.getElementById("queryText").value = query.trim();
+    const endpoint = getEndpoint();
+    const statusEl = document.getElementById("status");
+    const resultsEl = document.getElementById("results");
+
+    statusEl.textContent = "Running query...";
+    resultsEl.innerHTML = "";
+
+     try {
+        const json = await fetchSparqlJSON(endpoint, query);
+        renderTable(json);
+        statusEl.textContent = "OK – " + json.results.bindings.length + " result(s).";
+    } catch (err) {
+        console.error(err);
+        statusEl.textContent = "Error: " + err.message;
+        resultsEl.innerHTML = "<pre>" + escapeHtml(err.message) + "</pre>";
+    }
+  }
+  // Render SPARQL JSON results as HTML table
+  function renderTable(json) {
+    const vars = json.head.vars || [];
+    const rows = json.results.bindings || [];
+    const container = document.getElementById("results");
+
+    if (rows.length === 0) {
+      container.innerHTML = "<p>No results.</p>";
+      return;
+    }
+
+    let html = "<table><thead><tr>";
+    vars.forEach(v => { html += "<th>" + escapeHtml(v) + "</th>"; });
+    html += "</tr></thead><tbody>";
+
+    rows.forEach(row => {
+      html += "<tr>";
+      vars.forEach(v => {
+        const cell = row[v] ? row[v].value : "";
+        html += "<td>" + escapeHtml(cell) + "</td>";
+      });
+      html += "</tr>";
+    });
+
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, function (c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  
+//Search books with top ratings
+  function runTopRated() {
+    const query = `
+PREFIX schema: <http://schema.org/>
+PREFIX : <http://books.com/>
+
+SELECT ?bookId ?title ?rating ?authorName
+WHERE {
+  ?book a schema:Book ;
+        :bookId ?bookId ;
+        schema:name ?title ;
+        schema:aggregateRating ?ar ;
+        schema:author ?author .
+  ?ar schema:ratingValue ?rating .
+  OPTIONAL {
+    ?author schema:name ?authorName .
+  }
+}
+ORDER BY DESC(?rating)
+LIMIT 50
+`;
+    runQuery(query);
+  }
+
+//Search books by author name
+  function runByAuthor() {
+    const name = document.getElementById("authorInput").value.trim();
+    if (!name) {
+      alert("Please enter an author name.");
+      return;
+    }
+    const escaped = name.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+
+    const query = `
+PREFIX schema: <http://schema.org/>
+PREFIX : <http://books.com/>
+
+SELECT ?bookId ?title
+WHERE {
+  ?book a schema:Book ;
+        :bookId ?bookId ;
+        schema:name ?title ;
+        schema:author ?a .
+  ?a schema:name ?authorName .
+  FILTER(LCASE(?authorName) = LCASE("${escaped}"))
+}
+ORDER BY ?title
+`;
+    runQuery(query);
+  }
+
+//search books with series and their position in the series
+  function runSeries() {
+    const query = `
+PREFIX schema: <http://schema.org/>
+PREFIX : <http://books.com/>
+
+SELECT ?bookId ?title ?seriesName ?pos
+WHERE {
+  ?book a schema:Book ;
+        :bookId ?bookId ;
+        schema:name ?title ;
+        schema:isPartOfSeries ?series ;
+        :seriesPosition ?pos .
+  OPTIONAL { ?series schema:name ?seriesName . }
+}
+ORDER BY ?seriesName ?pos ?title
+LIMIT 50
+`;
+    runQuery(query);
+  }
+
+//get the count of books by genre, sorted by count desc
+  function runGenreCount() {
+    const query = `
+PREFIX schema: <http://schema.org/>
+PREFIX : <http://books.com/>
+
+SELECT ?genre (COUNT(DISTINCT ?book) AS ?count)
+WHERE {
+  ?book a schema:Book ;
+        schema:genre ?genre .
+}
+GROUP BY ?genre
+ORDER BY DESC(?count)
+LIMIT 20
+`;
+    runQuery(query);
+  }
+
+//compare Goodreads rating and BBE score for books that have both
+  function runRatingVsBBE() {
+    const query = `
+PREFIX schema: <http://schema.org/>
+PREFIX : <http://books.com/>
+
+SELECT ?bookId ?title ?rating ?bbeScore
+WHERE {
+  ?book a schema:Book ;
+        :bookId ?bookId ;
+        schema:name ?title ;
+        schema:aggregateRating ?ar ;
+        :bbeRating ?br .
+  ?ar schema:ratingValue ?rating .
+  ?br :bbeScore ?bbeScore .
+}
+LIMIT 50
+`;
+    runQuery(query);
+  }
+
+// Run the query currently in the textarea
+  function runCurrentQuery() {
+    const q = document.getElementById("queryText").value;
+    if (!q.trim()) {
+      alert("No result");
+      return;
+    }
+    runQuery(q);
+  }
+
+async function runAuthorNationality() {
+  const titleInput = document.getElementById("bookTitleNationality").value.trim();
+  const statusEl = document.getElementById("status");
+  const resultsEl = document.getElementById("results");
+
+  if (!titleInput) {
+    alert("Please enter a book title.");
+    return;
+  }
+
+  //search for author name in local RDF based on book title
+  const endpointLocal = getEndpoint();
+  const escapedTitle = titleInput
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, "\\\"");
+
+  const localQuery = `
+PREFIX schema: <http://schema.org/>
+PREFIX : <http://books.com/>
+
+SELECT DISTINCT ?authorName
+WHERE {
+  ?book a schema:Book ;
+        schema:name ?title ;
+        schema:author ?a .
+  ?a schema:name ?authorName .
+  FILTER(LCASE(?title) = LCASE("${escapedTitle}"))
+}
+`;
+
+  document.getElementById("queryText").value = localQuery.trim();
+  statusEl.textContent = "searching for author in local RDF…";
+  resultsEl.innerHTML = "";
+
+  let localJson;
+  try {
+    localJson = await fetchSparqlJSON(endpointLocal, localQuery);
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = "searching for author in local RDF failed: " + err.message;
+    resultsEl.innerHTML = "<pre>" + escapeHtml(err.message) + "</pre>";
+    return;
+  }
+
+  const bindings = localJson.results.bindings || [];
+  if (bindings.length === 0) {
+    resultsEl.innerHTML = "<p>No author found for the given book title.</p>";
+    statusEl.textContent = "0 author found.";
+    return;
+  }
+
+  const names = bindings.map(b => b.authorName.value);// get all author names
+
+  //Search in Wikidata
+  let valuesPart = "";
+  names.forEach(n => {
+    const escaped = n.replace(/"/g, "\\\"");
+    valuesPart += `"${escaped}"@en `;
+  });
+
+  const wikidataQuery = `
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX wdt:  <http://www.wikidata.org/prop/direct/>
+PREFIX wd:   <http://www.wikidata.org/entity/>
+PREFIX wikibase: <http://wikiba.se/ontology#>
+PREFIX bd:   <http://www.bigdata.com/rdf#>
+
+SELECT ?name ?author ?countryLabel
+WHERE {
+  VALUES ?name { ${valuesPart} }
+  ?author rdfs:label ?name ;
+          wdt:P31 wd:Q5 ;        # human
+          wdt:P106 wd:Q36180 ;   # writer
+          wdt:P27 ?country .     # country of citizenship
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+}
+`;
+
+  document.getElementById("queryText").value = wikidataQuery.trim();
+  statusEl.textContent = "searching in Wikidata…";
+
+  const endpointWD = "https://query.wikidata.org/sparql";
+
+  try {
+    const wdJson = await fetchSparqlJSON(endpointWD, wikidataQuery);
+    renderTable(wdJson);
+    statusEl.textContent = "OK – " + wdJson.results.bindings.length + " result(s).";
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = "Wikidata search failed: " + err.message;
+    resultsEl.innerHTML = "<pre>" + escapeHtml(err.message) + "</pre>";
+  }
+}
+
+  // Run genre count query and render bar chart with d3sparql
+async function runGenreCountChart() {
+  const endpoint  = getEndpoint();
+  const statusEl  = document.getElementById("status");
+  const resultsEl = document.getElementById("results");
+  const chartEl   = document.getElementById("chart");
+
+  const query = `
+PREFIX schema: <http://schema.org/>
+PREFIX : <http://books.com/>
+
+SELECT ?genre (COUNT(DISTINCT ?book) AS ?count)
+WHERE {
+  ?book a schema:Book ;
+        schema:genre ?genre .
+}
+GROUP BY ?genre
+ORDER BY DESC(?count)
+LIMIT 20
+`;
+
+  // 把查询也同步写到文本框里，方便你看
+  document.getElementById("queryText").value = query.trim();
+  statusEl.textContent = "Running genre count query...";
+  resultsEl.innerHTML = "";
+  chartEl.innerHTML   = "";   // 清空旧的图
+
+  try {
+    // 1) 向你自己的 Fuseki 发 POST，拿到 SPARQL JSON
+    const json = await fetchSparqlJSON(endpoint, query);
+
+    // 2) 可选：同时用你现有的 renderTable 显示成表格
+    renderTable(json);
+
+    // 3) 用 d3sparql 画柱状图
+    const config = {
+      selector: "#chart",     // 画在 <div id="chart"> 里
+      label_x:  "genreLabel", // x 轴标签
+      label_y:  "count",      // y 轴标签
+      var_x:    "genreLabel", // 对应 SPARQL 里的变量名
+      var_y:    "count",
+      width:    750,
+      height:   350,
+      margin:   80
+    };
+
+    d3sparql.barchart(json, config);
+
+    statusEl.textContent =
+      "OK – " + json.results.bindings.length + " genres.";
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = "Error: " + err.message;
+    resultsEl.innerHTML = "<pre>" + escapeHtml(err.message) + "</pre>";
+  }
+}
+</script>
+
+</body>
+</html>
